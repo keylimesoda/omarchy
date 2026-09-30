@@ -14,6 +14,31 @@ Panel {
 
   // manageIpc: false so this panel can own the single IpcHandler the target
   // permits — needed for the brightness + state methods below.
+  readonly property bool layoutsAvailable: {
+    var registry = root.bar && "pluginRegistry" in root.bar ? root.bar.pluginRegistry : null
+    if (!registry) return false
+    var revision = registry.registryRevision
+    return Model.layoutEditorAvailable(registry)
+  }
+
+  property string layoutsError: ""
+
+  function openLayouts() {
+    if (layoutsLaunch.running) return
+    root.layoutsError = ""
+    layoutsLaunch.running = true
+  }
+
+  Process {
+    id: layoutsLaunch
+    command: ["omarchy-shell", "shell", "summon", "crmne.hyprmoncfg", "{}"]
+    stdout: StdioCollector { id: layoutsLaunchOutput; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode === 0 && layoutsLaunchOutput.text.trim() === "ok") root.close()
+      else root.layoutsError = "Could not open layouts. Check that hyprmoncfg is enabled."
+    }
+  }
+
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
@@ -78,6 +103,7 @@ Panel {
     list.push("textsize")
     list.push("scale")
     if (displays.length > 1) list.push("monitors")
+    if (layoutsAvailable) list.push("layouts")
     return list
   }
 
@@ -86,12 +112,13 @@ Panel {
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
+    if (section === "layouts") return 1
     return 0
   }
 
   function sectionIsSingleRow(section) {
     // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    return section === "brightness" || section === "textsize" || section === "scale" || section === "layouts"
   }
 
   function sectionFirstIndex(section) {
@@ -147,6 +174,7 @@ Panel {
   }
 
   function activateCursor() {
+    if (focusSection === "layouts") { root.openLayouts(); return }
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
@@ -217,7 +245,7 @@ Panel {
     })
   }
 
-  ShellIpc {
+  IpcHandler {
     target: "omarchy.monitor"
 
     function brightness(percent: string): string { return root.brightnessIpc(percent) }
@@ -819,6 +847,36 @@ Panel {
                 rowIndex: index
               }
             }
+          }
+
+          Button {
+            id: layoutsButton
+            visible: root.layoutsAvailable
+            width: parent.width
+            text: "Layouts & profiles"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            bordered: true
+            hasCursor: root.cursorActive && root.focusSection === "layouts"
+            onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(layoutsButton)
+            onClicked: root.openLayouts()
+            onHovered: function(hovered) {
+              if (!hovered || root.reflowingText) return
+              root.cursorActive = true
+              root.focusSection = "layouts"
+              root.selectedIndex = 0
+            }
+          }
+
+          Text {
+            width: parent.width
+            visible: root.layoutsError !== ""
+            text: root.layoutsError
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: Color.urgent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
           }
 
           Item {
