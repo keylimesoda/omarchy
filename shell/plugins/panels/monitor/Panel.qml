@@ -24,19 +24,9 @@ Panel {
   property string layoutsError: ""
 
   function openLayouts() {
-    if (layoutsLaunch.running) return
     root.layoutsError = ""
-    layoutsLaunch.running = true
-  }
-
-  Process {
-    id: layoutsLaunch
-    command: ["omarchy-shell", "shell", "summon", "crmne.hyprmoncfg", "{}"]
-    stdout: StdioCollector { id: layoutsLaunchOutput; waitForEnd: true }
-    onExited: function(exitCode) {
-      if (exitCode === 0 && layoutsLaunchOutput.text.trim() === "ok") root.close()
-      else root.layoutsError = "Could not open layouts. Check that hyprmoncfg is enabled."
-    }
+    if (root.layoutsAvailable && root.bar.shell.summon("crmne.hyprmoncfg", "{}")) root.close()
+    else root.layoutsError = "Could not open layouts. Check that hyprmoncfg is enabled."
   }
 
   property int brightnessPercent: 0
@@ -245,7 +235,7 @@ Panel {
     })
   }
 
-  IpcHandler {
+  ShellIpc {
     target: "omarchy.monitor"
 
     function brightness(percent: string): string { return root.brightnessIpc(percent) }
