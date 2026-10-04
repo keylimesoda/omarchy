@@ -25,6 +25,26 @@ if [[ $pinned == "true" ]]; then
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
 elif [[ -n $addr ]]; then
+  if [[ -z ${1:-} || -z ${2:-} ]]; then
+    monitor_id=$(echo "$active" | jq -r ".monitor")
+    if fit=$(hyprctl -j monitors | jq -er --argjson id "$monitor_id" '
+      .[] | select(.id == $id) |
+      (.scale // 1) as $scale |
+      (.reserved // [0, 0, 0, 0]) as $reserved |
+      [
+        ([1300, ((.width / $scale - $reserved[0] - $reserved[2]) * 0.8)] | min | floor),
+        ([900, ((.height / $scale - $reserved[1] - $reserved[3]) * 0.8)] | min | floor)
+      ] | @tsv
+    '); then
+      read -r fit_width fit_height <<<"$fit"
+      width=${1:-$fit_width}
+      height=${2:-$fit_height}
+    else
+      echo "Could not determine the active monitor's usable size" >&2
+      exit 1
+    fi
+  fi
+
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
