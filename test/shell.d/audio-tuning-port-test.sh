@@ -56,9 +56,12 @@ if args == ['subscribe']:
     if state().get('subscription_failure'): sys.exit(1)
     current = (base / 'state').read_text()
     if current != previous:
-      print("Event 'change' on sink #1", flush=True)
+      if not state().get('omit_port_event'):
+        print("Event 'change' on sink #1", flush=True)
       previous = current
+    print("Event 'new' on client #99", flush=True)
     time.sleep(.02)
+log('query ' + ' '.join(args))
 s = state()
 if args == ['get-default-sink']:
   print((base / 'default-sink').read_text()); sys.exit(0)
@@ -121,6 +124,11 @@ else: sys.exit(1)
       time.sleep(.3)
       assert host.poll() is None and not (stage / 'host').exists()
       print('ok - startup on headphones leaves audio unprocessed')
+      queries_before = (stage/'actions').read_text().count('query list sinks short')
+      time.sleep(1.2)
+      queries_after = (stage/'actions').read_text().count('query list sinks short')
+      assert queries_after - queries_before <= 4
+      print('ok - unrelated client events do not trigger repeated audio queries')
       set_state('analog-output-speaker')
       wait_for(lambda: (stage/'stream-7').read_text() == 'omarchy_speaker_tuning', 'speaker port starts DSP and moves only speaker streams')
       assert (stage/'default-sink').read_text() == 'omarchy_speaker_tuning'
@@ -137,8 +145,8 @@ else: sys.exit(1)
       assert (stage/'default-sink').read_text() == 'hdmi'
       assert 'move 8' not in (stage/'actions').read_text() and 'move 9' not in (stage/'actions').read_text() and 'move 10' not in (stage/'actions').read_text()
       print('ok - separate outputs, DSP playback streams and EasyEffects retain their routing')
-      set_state(None)
-      wait_for(lambda: not (stage/'host').exists(), 'unknown active port stops DSP')
+      set_state(None, omit_port_event=True)
+      wait_for(lambda: not (stage/'host').exists(), 'unknown active port stops DSP despite continuous unrelated events')
       set_state('analog-output-speaker')
       wait_for(lambda: (stage/'host').exists(), 'speaker DSP resumes after a known port returns')
       set_state('analog-output-speaker', query_failure=True)

@@ -194,7 +194,7 @@ move_sink_apps() {
 }
 
 watch_speaker_port() {
-  local selected events_fd event status
+  local selected events_fd event status event_deadline
   # EXIT also runs after this function returns on an error, so the PIDs kept
   # by its cleanup cannot be function-local variables.
   port_host_pid=""
@@ -226,7 +226,7 @@ watch_speaker_port() {
 
   # Subscribe before checking the initial state, so plugging a headset in
   # during startup cannot be lost between the snapshot and the subscription.
-  coproc PORT_EVENTS { exec pactl subscribe; }
+  coproc PORT_EVENTS { LC_ALL=C exec pactl subscribe; }
   port_events_pid=$PORT_EVENTS_PID
   exec {events_fd}<&"${PORT_EVENTS[0]}"
   trap cleanup_port_watch EXIT
@@ -267,14 +267,22 @@ watch_speaker_port() {
     else
       stop_host
     fi
-    # Events handle jack changes immediately; a bounded periodic recheck also
-    # fails closed if a notification is missed. EOF restarts the service.
-    if read -r -t 1 -u "$events_fd" event; then
-      continue
-    else
-      status=$?
-      (( status > 128 )) || return 1
-    fi
+    # Each pactl query creates client events. Ignore those rather than querying
+    # again in response to our own connections. Sink/card events handle jack
+    # changes immediately, and a deadline keeps the periodic recheck bounded
+    # even while unrelated events keep arriving. EOF restarts the service.
+    event_deadline=$((SECONDS + 1))
+    while ((SECONDS < event_deadline)); do
+      if read -r -t 1 -u "$events_fd" event; then
+        case "$event" in
+          *" on sink #"* | *" on card #"*) break ;;
+        esac
+      else
+        status=$?
+        (( status > 128 )) || return 1
+        break
+      fi
+    done
   done
 }
 
